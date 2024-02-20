@@ -1,0 +1,1380 @@
+---
+title: "Tissue-specific promoters MPRA library analysis"
+Author: Xiaoran Zhang
+Email: xiaoranzhang@childrens.harvard.edu
+output:
+  html_document:
+    df_print: paged
+Corresponding email: william.pu@enders.tch.harvard.edu
+Corresponding author: William T. Pu
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. ##library needed packages
+
+```{r}
+library(ggplot2)
+library(DESeq2)
+library(Rfast)
+library(dplyr)
+library(reshape2)
+library(fitdistrplus)
+library(compositions)
+library(stats)
+library(scrime)
+library(corrplot)
+library(pheatmap)
+library(fdrtool)
+library(coin)
+library(stringr)
+library(patchwork)
+```
+
+##source MPRA_analyzer Package
+
+```{r}
+source(file = "./MPRA_analyzer_2.R") 
+```
+
+```{r}
+#inputfile<-"../data/CHD_MPRA_raw_counts_DNA1-4_RNA1-4.txt"
+inputfile<-"../data/AAVDNA_1-5_liverDNA_1-5_ARNA_1-6_SRNA_1-5_LRNA_1-5_VRNA_1-5_KRNA_1-5_LARNA_1-5_LBRNA_1-5_merged_counts_result_with_header_new.txt"
+data<-read.table(file=inputfile,header=T,row.names = 1)
+head(data)
+# colnames(data)
+annote<-read.table(file="../data/Promoters_annotation_new_2.txt",row.names = 1,header = T)
+#colnames(annote)<-c("Promoters","enhancer_type","group","raw_names","A","V","S","L")
+#annote<- annote[annote$group != "NC_I",]
+#data<-data[rownames(annote),]
+#dim(data)
+#dim(annote)
+
+#write.table(data, "../data/AAVDNA_1-5_liverDNA_1-5_ARNA_1-6_SRNA_1-5_LRNA_1-5_VRNA_1-5_KRNA_1-5_LARNA_1-5_LBRNA_1-5_merged_counts_result_with_header_new.txt",sep="\t",quote=F)
+#write.table(annote, "../data/Promoters_annotation_new_2.txt",sep="\t",quote=F)
+```
+##Creat MPRA data set
+```{r}
+#RNA_Liver=data[,c(22:26)]
+#RNA_A=data[,c(11:16)]
+#RNA_S=data[,c(17:21)]
+colnames(data)
+#RNA_L=data[,c(22:26)]
+#RNA_V=data[,c(27,31)]
+DNA=data[,c(1:5)]
+#DNA_L=data[,c(6:10)]
+RNA=data[,c(11:46)]
+#annot=data[,c(9:11)] %>% as.data.frame()
+annot=as.data.frame(annote)
+rownames(annot)<-rownames(DNA)
+#colnames(annot)<-c("Promoters","enhancer_type","group","raw_names","A","V","S","L")
+data_norm<-create_MPRA_class(RNA=RNA,DNA=DNA,annot=annot)
+#data_norm_L<-create_MPRA_class(RNA=RNA_L,DNA=DNA,annot=annot)
+#data_norm_L2<-create_MPRA_class(RNA=RNA_L,DNA=DNA_L,annot=annot)
+#data_norm_A<-create_MPRA_class(RNA=RNA_A,DNA=DNA,annot=annot)
+#data_norm_S<-create_MPRA_class(RNA=RNA_S,DNA=DNA,annot=annot)
+#data_norm_V<-create_MPRA_class(RNA=RNA_V,DNA=DNA,annot=annot)
+```
+##Plot DNA counts distribution
+```{r}
+filter_norm_data <- filter_data(data_norm, dna_filter=0,equal_or_not=F)
+#filter_norm_data_L2 <- filter_data(data_norm_L2, dna_filter=0,equal_or_not=F)
+DNA_total <- as.data.frame(matrixStats::rowMins(as.matrix(filter_norm_data@DNA)))
+#DNA_total_L2 <- as.data.frame(matrixStats::rowMins(as.matrix(filter_norm_data_L2@DNA)))
+colnames(DNA_total)<-"minDNA"
+#colnames(DNA_total_L2)<-"minDNA"
+dim(filter_norm_data@DNA)
+#dim(filter_norm_data_L2@DNA)
+
+#pdf("../p_figures/DNA_counts_distribution_AAV_DNA_with_NG_DNApromoter.pdf")
+ggplot(DNA_total, aes(x = minDNA))+ geom_histogram(binwidth = 2,color="skyblue")+theme_bw()+theme_classic()+
+  geom_vline(xintercept = 6,color="skyblue",size=0.4,linetype="dashed")+xlim(0,300)
+##ggplot(DNA_total_L2, aes(x = minDNA))+ geom_histogram(binwidth = 2,color="skyblue")+theme_bw()+theme_classic()+
+##  geom_vline(xintercept = 6,color="skyblue",size=0.4,linetype="dashed")+xlim(0,300)
+#dev.off()
+```
+## DEseq2 to got active enhancers
+```{r}
+#source(file = "./MPRA_analyzer_2.R") 
+
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "L_DESeq2_Active",RNA_cols = c(12:16))
+#filter_norm_data_L2 <-DEGseq2_active(filter_norm_data=filter_norm_data_L2, addname = "L2_DESeq2_Active")
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "A_DESeq2_Active",RNA_cols = c(1:6))
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "S_DESeq2_Active",RNA_cols = c(7:11))
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "V_DESeq2_Active",RNA_cols = c(17:21))
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "K_DESeq2_Active",RNA_cols = c(22:26))
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "LA_DESeq2_Active",RNA_cols = c(27:31))
+filter_norm_data <-DEGseq2_active(filter_norm_data=filter_norm_data, addname = "LB_DESeq2_Active",RNA_cols = c(32:36))
+sum(filter_norm_data@res$A_DESeq2_Active)
+sum(filter_norm_data@res$V_DESeq2_Active)
+sum(filter_norm_data@res$L_DESeq2_Active)
+sum(filter_norm_data@res$S_DESeq2_Active)
+sum(filter_norm_data@res$K_DESeq2_Active)
+sum(filter_norm_data@res$LA_DESeq2_Active)
+sum(filter_norm_data@res$LB_DESeq2_Active)
+#sum(filter_norm_data_L2@res$L2_DESeq2_Active)
+results<- cbind(filter_norm_data@annot,filter_norm_data@res)
+#results_L2<- cbind(filter_norm_data_L2@annot,filter_norm_data_L2@res)
+table(results[,c("enhancer_type","A_DESeq2_Active")])
+table(results[,c("enhancer_type","L_DESeq2_Active")])
+#table(results_L2[,c("enhancer_type","L2_DESeq2_Active")])
+table(results[,c("enhancer_type","S_DESeq2_Active")])
+table(results[,c("enhancer_type","V_DESeq2_Active")])
+table(results[,c("enhancer_type","K_DESeq2_Active")])
+table(results[,c("enhancer_type","LA_DESeq2_Active")])
+table(results[,c("enhancer_type","LB_DESeq2_Active")])
+table(results[,c("enhancer_type","A_DESeq2_Active","A")])
+table(results[,c("enhancer_type","L_DESeq2_Active","L")])
+#table(results_L2[,c("enhancer_type","L2_DESeq2_Active","L")])
+table(results[,c("enhancer_type","S_DESeq2_Active","S")])
+table(results[,c("enhancer_type","V_DESeq2_Active","V")])
+table(results[,c("enhancer_type","K_DESeq2_Active","V")])
+table(results[,c("enhancer_type","LA_DESeq2_Active","V")])
+table(results[,c("enhancer_type","LB_DESeq2_Active","V")])
+```
+##DNA counts distribution
+```{r}
+#filter_norm_data_new <- filter_data(filter_norm_data, dna_filter=5,filter_by="Max")
+filter_norm_data_new <- filter_data(filter_norm_data, dna_filter=10,filter_by="Min")
+##filter_norm_data_new_L2 <- filter_data(filter_norm_data_L2, dna_filter=5,filter_by="Max")
+#filter_norm_data_new_L2 <- filter_data(filter_norm_data_L2, dna_filter=10,filter_by="Min")
+total_number <- length(filter_norm_data@DNA[,1])
+kept_number <- length(filter_norm_data_new@DNA[,1])
+keptratio <- kept_number/total_number
+DNA_counts <- data.frame(
+  label=c("total_number","kept_number","keptratio"),
+  value=c(as.character(total_number),as.character(kept_number),as.character(keptratio))
+)
+DNA_counts
+
+
+```
+## got RNA/DNA ratio
+```{r}
+filter_norm_data_new <- get_ratio(data=filter_norm_data_new, DNA_merge="Median")
+#filter_norm_data_new_L2 <- get_ratio(data=filter_norm_data_new_L2, DNA_merge="Paired")
+head(filter_norm_data_new@res)
+```
+##Size factor
+```{r}
+#source("./MPRA_analyzer_2.R")
+filter_norm_data_new@annot$group[filter_norm_data_new@annot$group==0]<-"NC_II"
+#filter_norm_data_new_L2@annot$group[filter_norm_data_new@annot$group==0]<-"NC_II"
+#Negative_C <- t(dplyr::select(as.data.frame(t(filter_norm_data_new@now_value)), !contains("::")))
+#Positive_C <- t(dplyr::select(as.data.frame(t(filter_norm_data_new@now_value)), !contains("::")))
+#both_C <- rownames(rbind(Negative_C,Positive_C))
+#both_C <- rownames(filter_norm_data_new@annot[filter_norm_data_new@annot$group=="PC",])
+both_C <- rownames(filter_norm_data_new@annot[filter_norm_data_new@annot$group=="PC" | 
+                                               filter_norm_data_new@annot$group=="NC_II"|
+                                                filter_norm_data_new@annot$group=="NC_III",])
+filter_norm_data_nc <-MPRA_SizeFactors(filter_norm_data_new,both_C,c(1:36))
+#filter_norm_data_nc_2 <- MPRA_gfpFactors(filter_norm_data_new,c(1:21),factors=c(1,2,3,4,5,
+#                                                                                 6,1,2,3,4,
+#                                                                                 1,2,3,1,2,3,
+#                                                                                 3,4,5,3,2))
+#filter_norm_data_nc_normalize_exp <- as.data.frame(filter_norm_data_nc@res[,c(6:9)])
+filter_norm_data_nc_normalize_exp<-filter_norm_data_nc@now_value
+#filter_norm_data_nc_normalize_exp<-filter_norm_data_new@now_value
+#filter_norm_data_nc_normalize_exp_L2<-filter_norm_data_new_L2@now_value
+dim(filter_norm_data_nc_normalize_exp)
+```
+##PCC cor
+```{r}
+pdf("../p_figures/AVLS_pcc_with_ng.pdf",width = 20,height = 20)
+A_V_cor <- cor(filter_norm_data_nc_normalize_exp)
+p<-corrplot(A_V_cor, method  = "number",order = "alphabet",number.font = 0.5)
+dev.off()
+#plot1<-filter_norm_data_nc_normalize_exp[,c(1:6)]
+#pdf("../p_figures/AVLS_pcc_scatter_plot.pdf",width = 20,height = 20)
+pdf("../p_figures/AVLS_pcc_split_scatter_plot.pdf",width = 20,height = 20)
+#scatter_plot_cor(plot1)
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp,cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(1:21)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(22:36)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(1:6)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(7:11)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(12:16)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(17:21)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(22:26)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(27:31)],cor_method="spearman")
+ scatter_plot_cor(filter_norm_data_nc_normalize_exp[,c(32:36)],cor_method="spearman")
+dev.off()
+results <-cbind(filter_norm_data_new@now_value,filter_norm_data_new@annot, filter_norm_data_new@res)
+
+write.table(filter_norm_data_nc_normalize_exp,file = "../p_figures/A_V_L_S_AAV_DNA_log_ratio.txt",quote = F,sep = "\t")
+write.table(results,file = "../p_figures/AVLS_fulllist.txt",quote = F,sep = "\t")
+
+```
+##got mean/median value
+```{r}
+colnames(filter_norm_data_nc_normalize_exp)
+mean_log_A_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(1:6)]))
+mean_log_S_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(7:11)]))
+mean_log_L_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(12:16)]))
+mean_log_V_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(17:21)]))
+mean_log_K_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(22:26)]))
+mean_log_LA_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(27:31)]))
+mean_log_LB_ratio <- rowMedians(as.matrix(filter_norm_data_nc_normalize_exp[,c(32:36)]))
+filter_norm_data_scaled <- cbind(filter_norm_data_nc_normalize_exp,mean_log_A_ratio,mean_log_S_ratio,mean_log_L_ratio,mean_log_V_ratio,mean_log_K_ratio,mean_log_LA_ratio,mean_log_LB_ratio)
+
+filter_norm_data_scaled<-as.data.frame(filter_norm_data_scaled)
+filter_norm_data_scaled$A_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_A_ratio)))
+filter_norm_data_scaled$S_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_S_ratio)))
+filter_norm_data_scaled$L_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_L_ratio)))
+filter_norm_data_scaled$V_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_V_ratio)))
+filter_norm_data_scaled$K_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_K_ratio)))
+filter_norm_data_scaled$LA_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_LA_ratio)))
+filter_norm_data_scaled$LB_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled$mean_log_LB_ratio)))
+filter_norm_data_nc@res$A_mean_log_ratio <-mean_log_A_ratio
+filter_norm_data_nc@res$S_mean_log_ratio <-mean_log_S_ratio
+filter_norm_data_nc@res$L_mean_log_ratio <-mean_log_L_ratio
+filter_norm_data_nc@res$V_mean_log_ratio <-mean_log_V_ratio
+filter_norm_data_nc@res$K_mean_log_ratio <-mean_log_K_ratio
+filter_norm_data_nc@res$LA_mean_log_ratio <-mean_log_LA_ratio
+filter_norm_data_nc@res$LB_mean_log_ratio <-mean_log_LB_ratio
+filter_norm_data_nc@res$A_order <-filter_norm_data_scaled$A_rank_value
+filter_norm_data_nc@res$S_order <-filter_norm_data_scaled$S_rank_value
+filter_norm_data_nc@res$L_order <-filter_norm_data_scaled$L_rank_value
+filter_norm_data_nc@res$V_order <-filter_norm_data_scaled$V_rank_value
+filter_norm_data_nc@res$K_order <-filter_norm_data_scaled$K_rank_value
+filter_norm_data_nc@res$LA_order <-filter_norm_data_scaled$LA_rank_value
+filter_norm_data_nc@res$KB_order <-filter_norm_data_scaled$LB_rank_value
+filter_norm_data_scaled$group<-filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"group"]
+filter_norm_data_scaled$group2<-paste0(filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"A"],"_",
+                                       filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"V"],"_",
+                                       filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"S"],"_",
+                                       filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"L"])
+filter_norm_data_scaled$A<-filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"A"]
+filter_norm_data_scaled$S<-filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"S"]
+filter_norm_data_scaled$L<-filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"L"]
+filter_norm_data_scaled$V<-filter_norm_data_nc@annot[rownames(filter_norm_data_scaled),"V"]
+filter_norm_data_scaled$A_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"A_DESeq2_Active"]
+filter_norm_data_scaled$V_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"V_DESeq2_Active"]
+filter_norm_data_scaled$L_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"L_DESeq2_Active"]
+filter_norm_data_scaled$S_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"S_DESeq2_Active"]
+filter_norm_data_scaled$K_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"K_DESeq2_Active"]
+filter_norm_data_scaled$LA_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"LA_DESeq2_Active"]
+filter_norm_data_scaled$LB_DESeq2_Active<-filter_norm_data_nc@res[rownames(filter_norm_data_scaled),"LB_DESeq2_Active"]
+########add a Group factor to the annotation matrix
+```
+## normalized by mCherry signal
+```{r}
+# source("./MPRA_analyzer_2.R")
+# filter_norm_data_new_mcherry<-MPRA_gfpFactors(filter_norm_data_new,DNA_cols = c(1:5),RNA_cols = c(1:36),useraw=F,
+#                                               factors_DNA=c(1,1,1,1,1,1,1,1),factors_RNA = c(0.31526,0.31526,0.31526,0.31526,0.31526,0.31526,
+#   0.51636,0.51636,0.51636,0.51636,0.51636,
+#   0.69361,0.69361,0.69361,0.69361,0.69361,
+#   0.61719,0.61719,0.61719,0.61719,0.61719,
+#   0.02505,0.02505,0.02505,0.02505,0.02505,
+#   0.08411,0.08411,0.08411,0.08411,0.08411,
+#   0.08411,0.08411,0.08411,0.08411,0.08411))
+# filter_norm_data_new_mcherry <- get_ratio(data=filter_norm_data_new_mcherry, DNA_merge="Median")
+# filter_norm_data_new_mcherry@annot$group[filter_norm_data_new_mcherry@annot$group==0]<-"NC_II"
+# 
+# filter_norm_data_nc_normalize_exp_m<-filter_norm_data_new_mcherry@now_value
+# 
+# dim(filter_norm_data_nc_normalize_exp_m)
+# colnames(filter_norm_data_nc_normalize_exp_m)
+# mean_log_A_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(1:6)])
+# mean_log_S_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(7:11)])
+# mean_log_L_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(12:16)])
+# mean_log_V_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(17:21)])
+# mean_log_K_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(22:26)])
+# mean_log_LA_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(27:31)])
+# mean_log_LB_ratio <- rowMeans(filter_norm_data_nc_normalize_exp_m[,c(32:36)])
+# filter_norm_data_scaled_m <- cbind(filter_norm_data_nc_normalize_exp_m,mean_log_A_ratio,mean_log_S_ratio,mean_log_L_ratio,mean_log_V_ratio,mean_log_K_ratio,mean_log_LA_ratio,mean_log_LB_ratio)
+# 
+# filter_norm_data_scaled_m<-as.data.frame(filter_norm_data_scaled_m)
+# filter_norm_data_scaled_m$A_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_A_ratio)))
+# filter_norm_data_scaled_m$S_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_S_ratio)))
+# filter_norm_data_scaled_m$L_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_L_ratio)))
+# filter_norm_data_scaled_m$V_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_V_ratio)))
+# filter_norm_data_scaled_m$K_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_K_ratio)))
+# filter_norm_data_scaled_m$LA_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_LA_ratio)))
+# filter_norm_data_scaled_m$LB_rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_m$mean_log_LB_ratio)))
+# filter_norm_data_scaled_m$A_mean_log_ratio <-mean_log_A_ratio
+# filter_norm_data_scaled_m$S_mean_log_ratio <-mean_log_S_ratio
+# filter_norm_data_scaled_m$L_mean_log_ratio <-mean_log_L_ratio
+# filter_norm_data_scaled_m$V_mean_log_ratio <-mean_log_V_ratio
+# filter_norm_data_scaled_m$K_mean_log_ratio <-mean_log_K_ratio
+# filter_norm_data_scaled_m$LA_mean_log_ratio <-mean_log_LA_ratio
+# filter_norm_data_scaled_m$LB_mean_log_ratio <-mean_log_LB_ratio
+# filter_norm_data_scaled_m$A_order <-filter_norm_data_scaled_m$A_rank_value
+# filter_norm_data_scaled_m$S_order <-filter_norm_data_scaled_m$S_rank_value
+# filter_norm_data_scaled_m$L_order <-filter_norm_data_scaled_m$L_rank_value
+# filter_norm_data_scaled_m$V_order <-filter_norm_data_scaled_m$V_rank_value
+# filter_norm_data_scaled_m$K_order <-filter_norm_data_scaled_m$K_rank_value
+# filter_norm_data_scaled_m$LA_order <-filter_norm_data_scaled_m$LA_rank_value
+# filter_norm_data_scaled_m$LB_order <-filter_norm_data_scaled_m$LB_rank_value
+# filter_norm_data_scaled_m$group<-filter_norm_data_new_mcherry@annot[rownames(filter_norm_data_scaled_m),"group"]
+# filter_norm_data_scaled_m$group2<-paste0(filter_norm_data_new_mcherry@annot[rownames(filter_norm_data_scaled_m),"A"],"_",
+#                                        filter_norm_data_new_mcherry@annot[rownames(filter_norm_data_scaled_m),"V"],"_",
+#                                        filter_norm_data_new_mcherry@annot[rownames(filter_norm_data_scaled_m),"S"],"_",
+#                                        filter_norm_data_new_mcherry@annot[rownames(filter_norm_data_scaled_m),"L"])
+# 
+# filter_norm_data_scaled_grouped_m <- as.data.frame(filter_norm_data_scaled_m)
+# 
+# melt_A <- filter_norm_data_scaled_grouped_m[,c("mean_log_A_ratio", "group")]
+# colnames(melt_A) <- c("value", "label")
+# melt_A$type <- "A"
+# melt_S <- filter_norm_data_scaled_grouped_m[,c("mean_log_S_ratio", "group")]
+# colnames(melt_S) <- c("value", "label")
+# melt_S$type <- "S"
+# melt_L <- filter_norm_data_scaled_grouped_m[,c("mean_log_L_ratio", "group")]
+# colnames(melt_L) <- c("value", "label")
+# melt_L$type <- "L"
+# melt_V <- filter_norm_data_scaled_grouped_m[,c("mean_log_V_ratio", "group")]
+# colnames(melt_V) <- c("value", "label")
+# melt_V$type <- "V"
+# melt_K <- filter_norm_data_scaled_grouped_m[,c("mean_log_K_ratio", "group")]
+# colnames(melt_K) <- c("value", "label")
+# melt_K$type <- "K"
+# melt_LA <- filter_norm_data_scaled_grouped_m[,c("mean_log_LA_ratio", "group")]
+# colnames(melt_LA) <- c("value", "label")
+# melt_LA$type <- "LA"
+# melt_LB<- filter_norm_data_scaled_grouped_m[,c("mean_log_LB_ratio", "group")]
+# colnames(melt_LB) <- c("value", "label")
+# melt_LB$type <- "LB"
+# 
+# rbind_melt <- rbind(melt_A, melt_S, melt_L, melt_V,melt_K,melt_LA,melt_LB)
+# pdf(file = "../p_figures/annotation_vs_activity_boxplot_mcherry.pdf")
+# ggplot(rbind_melt, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = as.factor(label))) + geom_boxplot()+theme_classic()
+# dev.off()
+# write.table(filter_norm_data_new_mcherry@now_value,file = "../p_figures/filter_norm_data_new_mcherry.txt",sep = "\t",quote = F)
+```
+
+##Plot the enhancers activity and rank and group information.
+
+```{r}
+########Different activities
+set.seed(11)
+filter_norm_data_scaled_grouped <- as.data.frame(filter_norm_data_scaled)
+
+# melt_A <- filter_norm_data_scaled_grouped[,c("mean_log_A_ratio", "A")]
+# colnames(melt_A) <- c("value", "label")
+# melt_A$type <- "A"
+# melt_S <- filter_norm_data_scaled_grouped[,c("mean_log_S_ratio", "S")]
+# colnames(melt_S) <- c("value", "label")
+# melt_S$type <- "S"
+# melt_L <- filter_norm_data_scaled_grouped[,c("mean_log_L_ratio", "L")]
+# colnames(melt_L) <- c("value", "label")
+# melt_L$type <- "L"
+# melt_V <- filter_norm_data_scaled_grouped[,c("mean_log_V_ratio", "V")]
+# colnames(melt_V) <- c("value", "label")
+# melt_V$type <- "V"
+melt_A <- filter_norm_data_scaled_grouped[,c("mean_log_A_ratio", "group")]
+colnames(melt_A) <- c("value", "label")
+melt_A$type <- "A"
+melt_S <- filter_norm_data_scaled_grouped[,c("mean_log_S_ratio", "group")]
+colnames(melt_S) <- c("value", "label")
+melt_S$type <- "S"
+melt_L <- filter_norm_data_scaled_grouped[,c("mean_log_L_ratio", "group")]
+colnames(melt_L) <- c("value", "label")
+melt_L$type <- "L"
+melt_V <- filter_norm_data_scaled_grouped[,c("mean_log_V_ratio", "group")]
+colnames(melt_V) <- c("value", "label")
+melt_V$type <- "V"
+
+melt_K <- filter_norm_data_scaled_grouped[,c("mean_log_K_ratio", "group")]
+colnames(melt_K) <- c("value", "label")
+melt_K$type <- "K"
+melt_LA <- filter_norm_data_scaled_grouped[,c("mean_log_LA_ratio", "group")]
+colnames(melt_LA) <- c("value", "label")
+melt_LA$type <- "LA"
+melt_LB <- filter_norm_data_scaled_grouped[,c("mean_log_LB_ratio", "group")]
+colnames(melt_LB) <- c("value", "label")
+melt_LB$type <- "LB"
+
+rbind_melt <- rbind(melt_A, melt_S, melt_L, melt_V,melt_K,melt_LA,melt_LB)
+#pdf(file = "../p_figures/annotation_vs_activity_boxplot.pdf")
+ggplot(rbind_melt, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = as.factor(label))) + geom_boxplot()+theme_classic()
+ggplot(rbind_melt, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = as.factor(label))) + geom_violin()+theme_classic()
+#dev.off()
+
+```
+
+```{r}
+filter_norm_data_scaled_grouped_2<-filter_norm_data_scaled_grouped
+filter_norm_data_scaled_grouped_2$group3<-filter_norm_data_scaled_grouped_2$group2
+filter_norm_data_scaled_grouped_2[filter_norm_data_scaled_grouped_2$group=="NC_II","group3"]<-"NC_Exon"
+filter_norm_data_scaled_grouped_2[filter_norm_data_scaled_grouped_2$group=="NC_III","group3"]<-"NC_random"
+melt_A_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_A_ratio", "group3")]
+colnames(melt_A_2) <- c("value", "label")
+melt_A_2$type <- "A"
+melt_S_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_S_ratio", "group3")]
+colnames(melt_S_2) <- c("value", "label")
+melt_S_2$type <- "S"
+melt_L_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_L_ratio", "group3")]
+colnames(melt_L_2) <- c("value", "label")
+melt_L_2$type <- "L"
+melt_V_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_V_ratio", "group3")]
+colnames(melt_V_2) <- c("value", "label")
+melt_V_2$type <- "V"
+
+melt_K_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_K_ratio", "group3")]
+colnames(melt_K_2) <- c("value", "label")
+melt_K_2$type <- "K"
+melt_LA_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_LA_ratio", "group3")]
+colnames(melt_LA_2) <- c("value", "label")
+melt_LA_2$type <- "LA"
+melt_LB_2 <- filter_norm_data_scaled_grouped_2[,c("mean_log_LB_ratio", "group3")]
+colnames(melt_LB_2) <- c("value", "label")
+melt_LB_2$type <- "LB"
+
+rbind_melt_2 <- rbind(melt_A_2, melt_S_2, melt_L_2, melt_V_2,melt_K_2,melt_LA_2,melt_LB_2)
+#pdf(file = "../p_figures/annotation_vs_activity_boxplot_splited.pdf",width = 20,height = 8)
+ggplot(rbind_melt_2, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = factor(label,levels = c("1_1_1_1","1_1_0_0",
+                                               "1_0_0_0","0_1_0_0",
+                                               "0_0_1_0","0_0_0_1",
+                                               "NC_Exon","NC_random")))) + geom_boxplot()+theme_classic()
+ggplot(rbind_melt_2, aes(fill = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, x = factor(label,levels = c("1_1_1_1","1_1_0_0",
+                                               "1_0_0_0","0_1_0_0",
+                                               "0_0_1_0","0_0_0_1",
+                                               "NC_Exon","NC_random")))) + geom_boxplot()+theme_classic()
+##ggplot(rbind_melt, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = as.factor(label))) + geom_violin()+theme_classic()
+#dev.off()
+```
+```{r}
+keeprownames<-rownames(filter_norm_data_new@annot[filter_norm_data_new@annot$enhancer_type=="CCT",])
+filter_norm_data_scaled_grouped_3<-filter_norm_data_scaled_grouped[keeprownames,]
+filter_norm_data_scaled_grouped_3$group3<-filter_norm_data_scaled_grouped_3$group2
+filter_norm_data_scaled_grouped_3[filter_norm_data_scaled_grouped_3$group=="NC_II","group3"]<-"NC_Exon"
+filter_norm_data_scaled_grouped_3[filter_norm_data_scaled_grouped_3$group=="NC_III","group3"]<-"NC_random"
+melt_A_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_A_ratio", "group3")]
+colnames(melt_A_3) <- c("value", "label")
+melt_A_3$type <- "A"
+melt_S_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_S_ratio", "group3")]
+colnames(melt_S_3) <- c("value", "label")
+melt_S_3$type <- "S"
+melt_L_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_L_ratio", "group3")]
+colnames(melt_L_3) <- c("value", "label")
+melt_L_3$type <- "L"
+melt_V_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_V_ratio", "group3")]
+colnames(melt_V_3) <- c("value", "label")
+melt_V_3$type <- "V"
+
+melt_K_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_K_ratio", "group3")]
+colnames(melt_K_3) <- c("value", "label")
+melt_K_3$type <- "K"
+melt_LA_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_LA_ratio", "group3")]
+colnames(melt_LA_3) <- c("value", "label")
+melt_LA_3$type <- "LA"
+melt_LB_3 <- filter_norm_data_scaled_grouped_3[,c("mean_log_LB_ratio", "group3")]
+colnames(melt_LB_3) <- c("value", "label")
+melt_LB_3$type <- "LB"
+
+rbind_melt_3 <- rbind(melt_A_3, melt_S_3, melt_L_3, melt_V_3,melt_K_3,melt_LA_3,melt_LB_3)
+pdf(file = "../p_figures/annotation_vs_activity_boxplot_splited_only_CCT.pdf",width = 40,height = 8)
+ggplot(rbind_melt_3, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = factor(label,levels = c("1_1_1_1","1_1_0_0",
+                                               "1_0_0_0","0_1_0_0",
+                                               "0_0_1_0","0_0_0_1",
+                                               "NC_Exon","NC_random")))) + geom_boxplot()+theme_classic()
+ggplot(rbind_melt_3, aes(fill = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, x = factor(label,levels = c("1_1_1_1","1_1_0_0",
+                                               "1_0_0_0","0_1_0_0",
+                                               "0_0_1_0","0_0_0_1",
+                                               "NC_Exon","NC_random")))) + geom_boxplot()+theme_classic()
+ggplot(rbind_melt_3, aes(fill = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, x = factor(label,levels = c("1_1_1_1","1_1_0_0",
+                                               "1_0_0_0","0_1_0_0",
+                                               "0_0_1_0","0_0_0_1",
+                                               "NC_Exon","NC_random")))) + geom_violin()+theme_classic()
+
+##ggplot(rbind_melt, aes(x = factor(type,levels=c("A","V","S","L","K","LA","LB")), y = value, fill = as.factor(label))) + geom_violin()+theme_classic()
+dev.off()
+```
+
+##
+```{r}
+#FPM_result<-cbind(filter_norm_data_nc@now_value,filter_norm_data_scaled_grouped)
+#FPM_result<-cbind(filter_norm_data_nc@DNA, filter_norm_data_nc@RNA,filter_norm_data_nc@now_value,filter_norm_data_scaled_grouped,
+#                  filter_norm_data_nc@annot)
+#FPM_result<-FPM_result[FPM_result$Coding !=TRUE,]
+#write.table(FPM_result,file="CHD_FPM.txt",sep="\t",quote = F)
+
+#ggplot(filter_norm_data_scaled_grouped, aes(x = mean_log_ratio, #color=group))+geom_density()+theme_bw()+theme_classic()
+#ggplot(filter_norm_data_scaled_grouped, aes(x = mean_log_ratio))+geom_density()+theme_bw()+theme_classic()
+##Negative control FDR 0.05
+select_NC<-filter_norm_data_scaled_grouped[filter_norm_data_scaled_grouped$group %in% c("NC_II","NC_III"),]
+FDR_0.95_A<-FDR_negative(select_NC,"mean_log_A_ratio")
+FDR_0.95_S<-FDR_negative(select_NC,"mean_log_S_ratio")
+FDR_0.95_L<-FDR_negative(select_NC,"mean_log_L_ratio")
+FDR_0.95_V<-FDR_negative(select_NC,"mean_log_V_ratio")
+FDR_0.95_K<-FDR_negative(select_NC,"mean_log_K_ratio")
+FDR_0.95_LA<-FDR_negative(select_NC,"mean_log_LA_ratio")
+FDR_0.95_LB<-FDR_negative(select_NC,"mean_log_LB_ratio")
+filter_norm_data_nc@res$FDR_active_A<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$A_mean_log_ratio>FDR_0.95_A,]$FDR_active_A <- 1
+filter_norm_data_nc@res$FDR_active_S<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$S_mean_log_ratio>FDR_0.95_S,]$FDR_active_S <- 1
+filter_norm_data_nc@res$FDR_active_L<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$L_mean_log_ratio>FDR_0.95_L,]$FDR_active_L <- 1
+filter_norm_data_nc@res$FDR_active_V<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$V_mean_log_ratio>FDR_0.95_V,]$FDR_active_V <- 1
+filter_norm_data_nc@res$FDR_active_K<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$K_mean_log_ratio>FDR_0.95_K,]$FDR_active_K <- 1
+filter_norm_data_nc@res$FDR_active_LA<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$LA_mean_log_ratio>FDR_0.95_LA,]$FDR_active_LA <- 1
+filter_norm_data_nc@res$FDR_active_LB<-0
+filter_norm_data_nc@res[filter_norm_data_nc@res$LB_mean_log_ratio>FDR_0.95_LB,]$FDR_active_LB<- 1
+```
+##Got FDR 0.05 value
+```{r}
+FDR_0.95_A
+FDR_0.95_V
+FDR_0.95_S
+FDR_0.95_L
+FDR_0.95_K
+FDR_0.95_LA
+FDR_0.95_LB
+sum(filter_norm_data_nc@res$FDR_active_A)
+sum(filter_norm_data_nc@res$FDR_active_V)
+sum(filter_norm_data_nc@res$FDR_active_S)
+sum(filter_norm_data_nc@res$FDR_active_L)
+sum(filter_norm_data_nc@res$FDR_active_K)
+sum(filter_norm_data_nc@res$FDR_active_LA)
+sum(filter_norm_data_nc@res$FDR_active_LB)
+sum(filter_norm_data_nc@res$A_DESeq2_Active)
+sum(filter_norm_data_nc@res$V_DESeq2_Active)
+sum(filter_norm_data_nc@res$S_DESeq2_Active)
+sum(filter_norm_data_nc@res$L_DESeq2_Active)
+sum(filter_norm_data_nc@res$K_DESeq2_Active)
+sum(filter_norm_data_nc@res$LA_DESeq2_Active)
+sum(filter_norm_data_nc@res$LB_DESeq2_Active)
+results<- cbind(filter_norm_data_nc@annot,filter_norm_data_nc@res)
+table(results[,c("enhancer_type","FDR_active_A")])
+table(results[,c("enhancer_type","FDR_active_V")])
+table(results[,c("enhancer_type","FDR_active_S")])
+table(results[,c("enhancer_type","FDR_active_L")])
+table(results[,c("enhancer_type","FDR_active_K")])
+table(results[,c("enhancer_type","FDR_active_LA")])
+table(results[,c("enhancer_type","FDR_active_LB")])
+table(results[,c("enhancer_type","FDR_active_A","A")])
+table(results[,c("enhancer_type","FDR_active_V","V")])
+table(results[,c("enhancer_type","FDR_active_S","S")])
+table(results[,c("enhancer_type","FDR_active_L","L")])
+
+```
+
+##Plot A
+```{r}
+#group_data<-as.data.frame(filter_norm_data_nc@annot$group)
+#names(group_data)<-"group"
+#filter_norm_data_scaled_grouped_A <- cbind(filter_norm_data_nc@res[,c("A_mean_log_ratio","A_order","A_DESeq2_Active")],
+#                                         group_data)
+#filter_norm_data_scaled_grouped_A$rank_value <- rank(-as.numeric(as.character(filter_norm_data_scaled_grouped_A$A_mean_log_ratio)))
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_A_ratio", "A_rank_value",random = 2000)
+
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=A_rank_value,y=mean_log_A_ratio,color=factor(A_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_A , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = A_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(A_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+```
+## save plot and pvalue
+```{r}
+#pdf("../p_figures/A_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+#dev.off()
+write.table(dat_text,"../p_figures/A_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+```
+#### S
+```{r}
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_S_ratio", "S_rank_value",random = 2000)
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=S_rank_value,y=mean_log_S_ratio,color=factor(S_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_S , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = S_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(S_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+
+A/p_E/B
+dat_text
+
+```
+
+## save plot and pvalue
+```{r}
+pdf("../p_figures/S_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+dev.off()
+write.table(dat_text,"../p_figures/S_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+```
+
+## L
+```{r}
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_L_ratio", "L_rank_value",random = 2000)
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=L_rank_value,y=mean_log_L_ratio,color=factor(L_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_L , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = L_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(L_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+
+A/p_E/B
+dat_text
+```
+
+## save plot and pvalue
+```{r}
+pdf("../p_figures/L_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+dev.off()
+write.table(dat_text,"../p_figures/L_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+```
+
+```{r}
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_V_ratio", "V_rank_value",random = 2000)
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=V_rank_value,y=mean_log_V_ratio,color=factor(V_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_V , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = V_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(V_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+
+A/p_E/B
+dat_text
+```
+
+## save plot and pvalue
+```{r}
+pdf("../p_figures/V_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+dev.off()
+write.table(dat_text,"../p_figures/V_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+
+```
+
+```{r}
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_K_ratio", "K_rank_value",random = 2000)
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=K_rank_value,y=mean_log_K_ratio,color=factor(K_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_K , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = K_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(K_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+
+A/p_E/B
+dat_text
+```
+
+## save plot and pvalue
+```{r}
+pdf("../p_figures/K_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+dev.off()
+write.table(dat_text,"../p_figures/K_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+```
+
+
+```{r}
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_LA_ratio", "LA_rank_value",random = 2000)
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=LA_rank_value,y=mean_log_LA_ratio,color=factor(LA_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_LA , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = LA_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(LA_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+
+A/p_E/B
+dat_text
+```
+
+## save plot and pvalue
+```{r}
+pdf("../p_figures/LA_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+dev.off()
+write.table(dat_text,"../p_figures/LA_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+```
+
+
+
+```{r}
+
+filter_norm_data_scaled_grouped_test <-Enrich_score(filter_norm_data_scaled_grouped, "group", "mean_log_LB_ratio", "LB_rank_value",random = 2000)
+dat_text <-filter_norm_data_scaled_grouped_test$dat_text
+filter_norm_data_for_plot <- filter_norm_data_scaled_grouped_test$datasets
+#pdf("Enrichscore_of_CHD_library.pdf")
+dat_text
+A<-ggplot(filter_norm_data_scaled_grouped,aes(x=LB_rank_value,y=mean_log_LB_ratio,color=factor(LB_DESeq2_Active)))+
+  geom_point(size=2)+
+  geom_hline(yintercept =FDR_0.95_LB , linetype="dashed",color="blue")+
+  theme_bw()+
+  scale_color_manual(breaks = c("1", "0"), values=c("red", "gray"))+
+  theme_classic()
+
+B<-ggplot(filter_norm_data_scaled_grouped, aes(x = LB_rank_value, y = factor(group)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+
+p_E<- ggplot(filter_norm_data_for_plot, aes(LB_rank_value, final_ES,color=factor(score_group)))+geom_line()+theme_bw()+theme_classic()+
+  #facet_wrap(~score_group,scales = "free",nrow =8)+ 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())+
+  #scale_color_manual(breaks = c("Neg","Pos",
+  #                              "ALT","REF"), values=c("darkblue", "darkred","blue","red"))+
+  geom_hline(yintercept = 0,color="skyblue",size=0.4,linetype="dashed")+
+  geom_text(
+    data    = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust   = -2,
+    vjust   = -0.25) 
+
+A/p_E/B
+dat_text
+```
+
+## save plot and pvalue
+```{r}
+
+pdf("../p_figures/LB_rank_plot.pdf",width = 8,height = 8)
+A/p_E/B
+
+dev.off()
+write.table(dat_text,"../p_figures/LB_final_score_pvalue.txt",sep="\t",quote = F)
+dat_text
+
+```
+
+```{r}
+A_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = A_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+L_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = L_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+S_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = S_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  
+  theme_bw()
+V_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = V_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  theme_bw()
+K_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = K_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  theme_bw()
+LA_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = LA_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  theme_bw()
+LB_group2<-ggplot(filter_norm_data_scaled_grouped, aes(x = LB_rank_value, y = factor(group2)))+
+                                               #levels=c("Neg","Pos",
+                                                                             #       "ALT","REF"))))+
+  geom_bin2d(aes(alpha = ..density..), fill = "slategray",binwidth = c(5,1)) +
+  scale_fill_continuous(guide = "none")+
+  theme_bw()
+#pdf("../p_figures/ALSV_rank_plot.pdf",width = 10,height = 8)
+library(ggpubr)
+ggarrange(A_group2, V_group2, S_group2 ,L_group2,K_group2,LA_group2,LB_group2,rremove("x.text"), 
+          labels = c("A", "V", "S","L","K", "LA", "LB"),
+          ncol = 2, nrow = 2)
+
+#dev.off()
+```
+
+
+
+
+## write the table
+```{r}
+write.table(filter_norm_data_nc@res,file = "../p_figures/AVLS_filter_norm_data_nc_res.txt",sep = "\t",quote = F)
+write.table(filter_norm_data_scaled_grouped,file = "../p_figures/AVLS_filter_norm_data_scaled_grouped.txt",sep = "\t",quote = F)
+```
+##This part is for differently enhancers bewteen REF and ALT
+```{r}
+#source("./MPRA_analyzer_2.R")
+#saveRDS(filter_norm_data_nc,"filter_norm_data_nc.rds")
+inter_join <-split_for_pair(filter_norm_data_nc, vals = c("CCT","AAG"), condition = "enhancer_type", 
+                            group_by = "Promoters",kept_annot = c("A","V","S","L","group"), kept_res = c("FDR_active_A","FDR_active_S","FDR_active_L","FDR_active_V","FDR_active_K","FDR_active_LA","FDR_active_LB","A_mean_log_ratio","S_mean_log_ratio","L_mean_log_ratio","V_mean_log_ratio","K_mean_log_ratio","LA_mean_log_ratio","LB_mean_log_ratio"))
+inter_join <- Diff_enhancers(inter_join,c(56:61),c(1:6),addname2 = "A_AAG_activity",addname1 = "A_CCT_activity",addpvalue = "A_pvalue",addqvalue = "A_qvalue",addfold = "A_fold")
+inter_join <- Diff_enhancers(inter_join,c(62:66),c(7:11),addname2 = "S_AAG_activity",addname1 = "S_CCT_activity",addpvalue = "S_pvalue",addqvalue = "S_qvalue",addfold = "S_fold")
+inter_join <- Diff_enhancers(inter_join,c(67:71),c(12:16),addname2 = "L_AAG_activity",addname1 = "L_CCT_activity",addpvalue = "L_pvalue",addqvalue = "L_qvalue",addfold = "L_fold")
+inter_join <- Diff_enhancers(inter_join,c(72:76),c(17:21),addname2 = "V_AAG_activity",addname1 = "V_CCT_activity",addpvalue = "V_pvalue",addqvalue = "V_qvalue",addfold = "V_fold")
+inter_join <- Diff_enhancers(inter_join,c(77:81),c(22:26),addname2 = "K_AAG_activity",addname1 = "K_CCT_activity",addpvalue = "K_pvalue",addqvalue = "K_qvalue",addfold = "K_fold")
+inter_join <- Diff_enhancers(inter_join,c(82:86),c(27:31),addname2 = "LA_AAG_activity",addname1 = "LA_CCT_activity",addpvalue = "LA_pvalue",addqvalue = "LA_qvalue",addfold = "LA_fold")
+inter_join <- Diff_enhancers(inter_join,c(87:91),c(32:36),addname2 = "LB_AAG_activity",addname1 = "LB_CCT_activity",addpvalue = "LB_pvalue",addqvalue = "LB_qvalue",addfold = "LB_fold")
+colnames(inter_join)
+#inter_join$REF <- rowMeans(inter_join[,7:10])
+#inter_join$ALT <- rowMeans(inter_join[,1:4])
+#inter_join$fold <- inter_join$ALT-inter_join$REF
+inter_join$qvalue_0_05_A <- 0
+inter_join$qvalue_0_05_A[inter_join$A_qvalue < 0.05] <- 1
+inter_join$fold_1_5_A <- 0
+inter_join$fold_1_5_A [inter_join$A_fold <= -0.58] <- 1
+inter_join$fold_1_5_A [inter_join$A_fold >= 0.58] <- 2
+inter_join$active_A <- 0
+inter_join[inter_join$FDR_active_A_CCT==1,]$active_A <-1
+inter_join[inter_join$FDR_active_A_AAG==1,]$active_A <-1
+inter_join$final_sig_A <-0
+inter_join$final_sig_A[inter_join$qvalue_0_05_A >0 &  inter_join$A_fold >= 0.58 & inter_join$active_A >0] <-2
+inter_join$final_sig_A[inter_join$qvalue_0_05_A >0 & inter_join$A_fold <= -0.58 & inter_join$active_A >0] <-1
+
+inter_join$qvalue_0_05_S <- 0
+inter_join$qvalue_0_05_S[inter_join$S_qvalue < 0.05] <- 1
+inter_join$fold_1_5_S <- 0
+inter_join$fold_1_5_S [inter_join$S_fold <= -0.58] <- 1
+inter_join$fold_1_5_S [inter_join$S_fold >= 0.58] <- 2
+inter_join$active_S <- 0
+inter_join[inter_join$FDR_active_S_CCT==1,]$active_S <-1
+inter_join[inter_join$FDR_active_S_AAG==1,]$active_S <-1
+inter_join$final_sig_S <-0
+inter_join$final_sig_S[inter_join$qvalue_0_05_S >0 &  inter_join$S_fold >= 0.58 & inter_join$active_S >0] <-2
+inter_join$final_sig_S[inter_join$qvalue_0_05_S >0 & inter_join$S_fold <= -0.58 & inter_join$active_S >0] <-1
+
+inter_join$qvalue_0_05_L <- 0
+inter_join$qvalue_0_05_L[inter_join$L_qvalue < 0.05] <- 1
+inter_join$fold_1_5_L <- 0
+inter_join$fold_1_5_L [inter_join$L_fold <= -0.58] <- 1
+inter_join$fold_1_5_L [inter_join$L_fold >= 0.58] <- 2
+inter_join$active_L <- 0
+inter_join[inter_join$FDR_active_L_CCT==1,]$active_L <-1
+inter_join[inter_join$FDR_active_L_AAG==1,]$active_L <-1
+inter_join$final_sig_L <-0
+inter_join$final_sig_L[inter_join$qvalue_0_05_L >0 &  inter_join$L_fold >= 0.58 & inter_join$active_L >0] <-2
+inter_join$final_sig_L[inter_join$qvalue_0_05_L >0 & inter_join$L_fold <= -0.58 & inter_join$active_L >0] <-1
+
+inter_join$qvalue_0_05_V <- 0
+inter_join$qvalue_0_05_V[inter_join$V_qvalue < 0.05] <- 1
+inter_join$fold_1_5_V <- 0
+inter_join$fold_1_5_V [inter_join$V_fold <= -0.58] <- 1
+inter_join$fold_1_5_V [inter_join$V_fold >= 0.58] <- 2
+inter_join$active_V <- 0
+inter_join[inter_join$FDR_active_V_CCT==1,]$active_V <-1
+inter_join[inter_join$FDR_active_V_AAG==1,]$active_V <-1
+inter_join$final_sig_V <-0
+inter_join$final_sig_V[inter_join$qvalue_0_05_V >0 &  inter_join$V_fold >= 0.58 & inter_join$active_V >0] <-2
+inter_join$final_sig_V[inter_join$qvalue_0_05_V >0 & inter_join$V_fold <= -0.58 & inter_join$active_V >0] <-1
+
+inter_join$qvalue_0_05_K <- 0
+inter_join$qvalue_0_05_K[inter_join$K_qvalue < 0.05] <- 1
+inter_join$fold_1_5_K <- 0
+inter_join$fold_1_5_K [inter_join$K_fold <= -0.58] <- 1
+inter_join$fold_1_5_K [inter_join$K_fold >= 0.58] <- 2
+inter_join$active_K <- 0
+inter_join[inter_join$FDR_active_K_CCT==1,]$active_K <-1
+inter_join[inter_join$FDR_active_K_AAG==1,]$active_K <-1
+inter_join$final_sig_K <-0
+inter_join$final_sig_K[inter_join$qvalue_0_05_K >0 &  inter_join$K_fold >= 0.58 & inter_join$active_K >0] <-2
+inter_join$final_sig_K[inter_join$qvalue_0_05_K >0 & inter_join$K_fold <= -0.58 & inter_join$active_K >0] <-1
+
+
+inter_join$qvalue_0_05_LA <- 0
+inter_join$qvalue_0_05_LA[inter_join$LA_qvalue < 0.05] <- 1
+inter_join$fold_1_5_LA <- 0
+inter_join$fold_1_5_LA [inter_join$LA_fold <= -0.58] <- 1
+inter_join$fold_1_5_LA [inter_join$LA_fold >= 0.58] <- 2
+inter_join$active_LA <- 0
+inter_join[inter_join$FDR_active_LA_CCT==1,]$active_LA <-1
+inter_join[inter_join$FDR_active_LA_AAG==1,]$active_LA <-1
+inter_join$final_sig_LA <-0
+inter_join$final_sig_LA[inter_join$qvalue_0_05_LA >0 &  inter_join$LA_fold >= 0.58 & inter_join$active_LA >0] <-2
+inter_join$final_sig_LA[inter_join$qvalue_0_05_LA >0 & inter_join$LA_fold <= -0.58 & inter_join$active_LA >0] <-1
+
+inter_join$qvalue_0_05_LB <- 0
+inter_join$qvalue_0_05_LB[inter_join$LB_qvalue < 0.05] <- 1
+inter_join$fold_1_5_LB <- 0
+inter_join$fold_1_5_LB [inter_join$LB_fold <= -0.58] <- 1
+inter_join$fold_1_5_LB [inter_join$LB_fold >= 0.58] <- 2
+inter_join$active_LB <- 0
+inter_join[inter_join$FDR_active_LB_CCT==1,]$active_LB <-1
+inter_join[inter_join$FDR_active_LB_AAG==1,]$active_LB <-1
+inter_join$final_sig_LB <-0
+inter_join$final_sig_LB[inter_join$qvalue_0_05_LB >0 &  inter_join$LB_fold >= 0.58 & inter_join$active_LB >0] <-2
+inter_join$final_sig_LB[inter_join$qvalue_0_05_LB >0 & inter_join$LB_fold <= -0.58 & inter_join$active_LB >0] <-1
+
+
+inter_join$group2<-paste0(inter_join[,"A_AAG"],"_",inter_join[,"V_AAG"],"_",inter_join[,"S_AAG"],"_",inter_join[,"L_AAG"])
+head(inter_join)
+fold_for_plot_A<-cbind(filter_norm_data_nc@annot[,"enhancer_type"],filter_norm_data_scaled_grouped)
+colnames(fold_for_plot_A)[1]<-"enhancer_type"
+#inter_join_filter <-inter_join[inter_join$Coding_ALT==FALSE,]
+write.table(inter_join,file="../p_figures/AAG_CCT_diff_Enhancers.txt",sep="\t",quote = F)
+#pdf("../p_figures/AAG_CCT_Diff_enhancers_ASLV_mean.pdf",width = 8.5,height = 9)
+A1<-ggplot(inter_join,aes(A_CCT_activity, A_AAG_activity,color=factor(final_sig_A,levels=c('0','1','2')), alpha =factor(qvalue_0_05_A,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+   geom_hline(yintercept = FDR_0.95_A,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_A,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+A2<-ggplot(inter_join,aes(y=A_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+S1<-ggplot(inter_join,aes(S_CCT_activity, S_AAG_activity,color=factor(final_sig_S,levels=c('0','1','2')), alpha =factor(qvalue_0_05_S,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_S,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_S,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+S2<-ggplot(inter_join,aes(y=S_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+L1<-ggplot(inter_join,aes(L_CCT_activity, L_AAG_activity,color=factor(final_sig_L,levels=c('0','1','2')), alpha =factor(qvalue_0_05_L,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_L,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_L,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+L2<-ggplot(inter_join,aes(y=L_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+V1<-ggplot(inter_join,aes(V_CCT_activity, V_AAG_activity,color=factor(final_sig_V,levels=c('0','1','2')), alpha =factor(qvalue_0_05_V,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_V,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_V,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+V2<-ggplot(inter_join,aes(y=V_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+
+K1<-ggplot(inter_join,aes(K_CCT_activity, K_AAG_activity,color=factor(final_sig_K,levels=c('0','1','2')), alpha =factor(qvalue_0_05_K,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_K,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_K,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+K2<-ggplot(inter_join,aes(y=K_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+
+LA1<-ggplot(inter_join,aes(LA_CCT_activity, LA_AAG_activity,color=factor(final_sig_LA,levels=c('0','1','2')), alpha =factor(qvalue_0_05_LA,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_LA,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_LA,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+LA2<-ggplot(inter_join,aes(y=LA_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+LB1<-ggplot(inter_join,aes(LB_CCT_activity, LB_AAG_activity,color=factor(final_sig_LB,levels=c('0','1','2')), alpha =factor(qvalue_0_05_LB,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_LB,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_LB,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+LB2<-ggplot(inter_join,aes(y=LB_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+
+A1/A2
+V1/V2
+S1/S2
+L1/L2
+K1/K2
+LA1/LA2
+LB1/LB2
+test<-(inter_join[inter_join$fold_1_5_K>0 & inter_join$active_K==1,c(22:26,77:81)])
+pheatmap(test,cluster_rows = F,cluster_cols = F,scale = "row")
+#dev.off()
+```
+```{r}
+test<-(inter_join[,c(56:91)])
+pheatmap(test,cluster_rows = T,cluster_cols = F,scale = "row")
+```
+
+plot tissue specific promoters
+```{r}
+#source("./MPRA_analyzer_2.R")
+tissue_join <-as.data.frame(filter_norm_data_nc@now_value)
+
+tissue_join <- Diff_enhancers(tissue_join,c(7:36),c(1:6),addname2 = "A_activity",addname1 = "SLV_tissue_activity",addpvalue = "A_pvalue",addqvalue = "A_qvalue",addfold = "A_fold",paired=F)
+tissue_join <- Diff_enhancers(tissue_join,c(1:6,12:36),c(7:11),addname2 = "S_activity",addname1 = "ALV_activity",addpvalue = "S_pvalue",addqvalue = "S_qvalue",addfold = "S_fold",paired=F)
+tissue_join <- Diff_enhancers(tissue_join,c(1:11,17:36),c(12:16),addname2 = "L_activity",addname1 = "ASV_activity",addpvalue = "L_pvalue",addqvalue = "L_qvalue",addfold = "L_fold",paired=F)
+tissue_join <- Diff_enhancers(tissue_join,c(1:26,22:36),c(17:21),addname2 = "V_activity",addname1 = "ASL_activity",addpvalue = "V_pvalue",addqvalue = "V_qvalue",addfold = "V_fold",paired=F)
+tissue_join <- Diff_enhancers(tissue_join,c(1:21,27:36),c(22:26),addname2 = "K_activity",addname1 = "AVLSLALB_tissue_activity",addpvalue = "K_pvalue",addqvalue = "K_qvalue",addfold = "K_fold",paired=F)
+tissue_join <- Diff_enhancers(tissue_join,c(1:26,32:36),c(27:31),addname2 = "LA_activity",addname1 = "ALVSKLB_activity",addpvalue = "LA_pvalue",addqvalue = "LA_qvalue",addfold = "LA_fold",paired=F)
+tissue_join <- Diff_enhancers(tissue_join,c(1:31),c(32:36),addname2 = "LB_activity",addname1 = "ASVKLA_activity",addpvalue = "LB_pvalue",addqvalue = "LB_qvalue",addfold = "LB_fold",paired=F)
+
+colnames(tissue_join)
+#tissue_join$REF <- rowMeans(tissue_join[,7:10])
+#tissue_join$ALT <- rowMeans(tissue_join[,1:4])
+#tissue_join$fold <- tissue_join$ALT-tissue_join$REF
+tissue_join$qvalue_0_05_A <- 0
+tissue_join$qvalue_0_05_A[tissue_join$A_qvalue < 0.05] <- 1
+tissue_join$fold_1_5_A <- 0
+tissue_join$fold_1_5_A [tissue_join$A_fold <= -0.58] <- 1
+tissue_join$fold_1_5_A [tissue_join$A_fold >= 0.58] <- 2
+tissue_join$active_A <- 0
+tissue_join[rownames(filter_norm_data_nc@annot[filter_norm_data_nc@res$FDR_active_A==1,]),]$active_A <-1
+tissue_join$final_sig_A <-0
+#tissue_join$final_sig_A[tissue_join$qvalue_0_05_A >0 &  tissue_join$A_fold >= 0.58 & tissue_join$active_A >0] <-2
+tissue_join$final_sig_A[tissue_join$A_qvalue <0.05 & tissue_join$A_fold >= 0.58 & tissue_join$active_A >0] <-1
+
+tissue_join$qvalue_0_05_S <- 0
+tissue_join$qvalue_0_05_S[tissue_join$S_qvalue < 0.05] <- 1
+tissue_join$fold_1_5_S <- 0
+tissue_join$fold_1_5_S [tissue_join$S_fold <= -0.58] <- 1
+tissue_join$fold_1_5_S [tissue_join$S_fold >= 0.58] <- 2
+tissue_join$active_S <- 0
+tissue_join[rownames(filter_norm_data_nc@annot[filter_norm_data_nc@res$FDR_active_S==1,]),]$active_S <-1
+tissue_join$final_sig_S <-0
+#tissue_join$final_sig_S[tissue_join$qvalue_0_05_S >0 &  tissue_join$S_fold >= 0.58 & tissue_join$active_S >0] <-2
+tissue_join$final_sig_S[tissue_join$S_qvalue <0.05  & tissue_join$S_fold >= 0.58 & tissue_join$active_S >0] <-1
+
+tissue_join$qvalue_0_05_L <- 0
+tissue_join$qvalue_0_05_L[tissue_join$L_qvalue < 0.05] <- 1
+tissue_join$fold_1_5_L <- 0
+tissue_join$fold_1_5_L [tissue_join$L_fold <= -0.58] <- 1
+tissue_join$fold_1_5_L [tissue_join$L_fold >= 0.58] <- 2
+tissue_join$active_L <- 0
+tissue_join[rownames(filter_norm_data_nc@annot[filter_norm_data_nc@res$FDR_active_L==1,]),]$active_L <-1
+tissue_join$final_sig_L <-0
+#tissue_join$final_sig_L[tissue_join$qvalue_0_05_L >0 &  tissue_join$L_fold >= 0.58 & tissue_join$active_L >0] <-2
+tissue_join$final_sig_L[tissue_join$L_qvalue <0.05 & tissue_join$L_fold >= 0.58 & tissue_join$active_L >0] <-1
+###stop here
+tissue_join$qvalue_0_05_V <- 0
+tissue_join$qvalue_0_05_V[tissue_join$V_qvalue < 0.05] <- 1
+tissue_join$fold_1_5_V <- 0
+tissue_join$fold_1_5_V [tissue_join$V_fold <= -0.58] <- 1
+tissue_join$fold_1_5_V [tissue_join$V_fold >= 0.58] <- 2
+tissue_join$active_V <- 0
+tissue_join[rownames(filter_norm_data_nc@annot[filter_norm_data_nc@res$FDR_active_V==1,]),]$active_V <-1
+tissue_join$final_sig_V <-0
+#tissue_join$final_sig_V[tissue_join$qvalue_0_05_V >0 &  tissue_join$V_fold >= 0.58 & tissue_join$active_V >0] <-2
+tissue_join$final_sig_V[tissue_join$V_qvalue <0.05 & tissue_join$V_fold >= 0.58 & tissue_join$active_V >0] <-1
+
+tissue_join$enhancer_type<-filter_norm_data_nc@annot$enhancer_type
+colnames(tissue_join)
+for_plot_A<-tissue_join[tissue_join$final_sig_A==1,]
+for_plot_V<-tissue_join[tissue_join$final_sig_V==1,]
+for_plot_S<-tissue_join[tissue_join$final_sig_S==1,]
+for_plot_L<-tissue_join[tissue_join$final_sig_L==1,]
+fold_for_plot<-rbind(for_plot_A,for_plot_V,for_plot_S,for_plot_L)
+fold_for_plot_2<-cbind(fold_for_plot[,c(1:5)],fold_for_plot[,c(17:21)],fold_for_plot[,c(6:16)])
+pheatmap(fold_for_plot_2,cluster_rows=F,cluster_cols=F,fontsize_row=1)
+fold_for_plot$order_A_specific <-rank(-as.numeric(as.character(fold_for_plot$A_fold)))
+fold_for_plot$order_V_specific <-rank(-as.numeric(as.character(fold_for_plot$V_fold)))
+fold_for_plot$order_S_specific <-rank(-as.numeric(as.character(fold_for_plot$S_fold)))
+fold_for_plot$order_L_specific <-rank(-as.numeric(as.character(fold_for_plot$L_fold)))
+
+for_plot_A_top10<-fold_for_plot[(fold_for_plot$final_sig_A & fold_for_plot$order_A_specific<=5)==1,c(1:21)]
+for_plot_V_top10<-fold_for_plot[(fold_for_plot$final_sig_V & fold_for_plot$order_V_specific<=5)==1,c(1:21)]
+for_plot_L_top10<-fold_for_plot[(fold_for_plot$final_sig_L & fold_for_plot$order_L_specific<=5)==1,c(1:21)]
+for_plot_S_top10<-fold_for_plot[(fold_for_plot$final_sig_S & fold_for_plot$order_S_specific<=5)==1,c(1:21)]
+fold_for_plot_top10<-rbind(for_plot_A_top10,for_plot_V_top10,for_plot_S_top10,for_plot_L_top10)
+fold_for_plot_top10_2<-cbind(fold_for_plot_top10[,c(1:5)],fold_for_plot_top10[,c(17:21)],fold_for_plot_top10[,c(6:16)])
+pheatmap(fold_for_plot_top10_2,cluster_rows=F,cluster_cols=F,fontsize_row=6)
+length()
+#fold_for_plot_A<-cbind(filter_norm_data_nc@annot[,"enhancer_type"],filter_norm_data_scaled_grouped)
+#colnames(fold_for_plot_A)[1]<-"enhancer_type"
+#tissue_join_filter <-tissue_join[tissue_join$Coding_ALT==FALSE,]
+write.table(tissue_join,file="tissue_specific_diff_Enhancers.txt",sep="\t",quote = F)
+
+```
+
+```{r}
+
+pdf("Tissue_Diff_enhancers_ASLV_mean.pdf",width = 8.5,height = 9)
+A1<-ggplot(tissue_join,aes(A_CCT_activity, A_AAG_activity,color=factor(final_sig_A,levels=c('0','1','2')), alpha =factor(qvalue_0_05_A,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+   geom_hline(yintercept = FDR_0.95_A,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_A,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+A2<-ggplot(tissue_join,aes(y=A_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+S1<-ggplot(tissue_join,aes(S_CCT_activity, S_AAG_activity,color=factor(final_sig_S,levels=c('0','1','2')), alpha =factor(qvalue_0_05_S,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_S,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_S,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+S2<-ggplot(tissue_join,aes(y=S_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+L1<-ggplot(tissue_join,aes(L_CCT_activity, L_AAG_activity,color=factor(final_sig_L,levels=c('0','1','2')), alpha =factor(qvalue_0_05_L,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_L,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_L,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+L2<-ggplot(tissue_join,aes(y=L_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+V1<-ggplot(tissue_join,aes(V_CCT_activity, V_AAG_activity,color=factor(final_sig_V,levels=c('0','1','2')), alpha =factor(qvalue_0_05_V,levels=c("0","1"))))+
+  geom_point()+theme_bw()+theme_classic()+geom_abline(slope = 1,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope = 1, intercept = 0.58,color="black",size=0.2,linetype="dashed")+
+  geom_abline(slope=1,intercept = -0.58,color="black",size=0.2,linetype="dashed")+
+     geom_hline(yintercept = FDR_0.95_V,color="black",size=0.2,linetype="dashed")+
+   geom_vline(xintercept = FDR_0.95_V,color="black",size=0.2,linetype="dashed")+
+  scale_color_manual(breaks = c("0", "2", "1"), values=c("gray", "red", "blue"))+
+  scale_alpha_manual(breaks = c("0", "1"), values=c(0.2, 1))+
+  xlim(-7,7)+ylim(-7,7)
+V2<-ggplot(tissue_join,aes(y=V_fold,x=group2,color=factor(group2)))+
+  geom_boxplot()+theme_bw()+theme_classic()
+A1/A2
+V1/V2
+S1/S2
+L1/L2
+
+dev.off()
+```
+```{r}
+tissue_join_2 <-as.data.frame(filter_norm_data_nc@res)
+```
+
+```{r}
+######Plot different groups enhancers activity
+sub2 <-inter_join_filter[inter_join_filter$final_sig !=0,c("REF","ALT","final_sig")]   
+sub2$final_sig3 <-paste0("x",sub2$final_sig)
+sub2[sub2$final_sig==1,]$final_sig3 <-"LoF"
+sub2[sub2$final_sig==2,]$final_sig3 <-"GoF"
+melt_sub2 <-melt(sub2[,c(1:2,4)])
+sub3 <- cbind(filter_norm_data_nc@annot[,"groups"],filter_norm_data_nc@res[,c("mean_log_ratio")])
+colnames(sub3)<-c("group","mean_log_ratio")
+sub3 <- sub3[(sub3[,"group"] %in% c("Neg")),] %>% as.data.frame() 
+melt_sub2$group<-paste0(melt_sub2$final_sig3,"_",melt_sub2$variable)
+sub4<-melt_sub2[,c("group","value")]
+colnames(sub4)<-c("group","mean_log_ratio")
+sub4_for_plot<-rbind(sub3,sub4)
+Anewdata <-filter_norm_data_nc@res
+#library(Rmisc)
+#CI(Anewdata[Anewdata$active==1,"mean_log_ratio"],ci=0.95)
+#CI(Anewdata[(Anewdata$active==1),"mean_log_ratio"],ci=0.95)
+Ql<-quantile(Anewdata[(Anewdata$Active==1),"mean_log_ratio"], 0.05)
+Qh<-quantile(Anewdata[(Anewdata$Active==1),"mean_log_ratio"], 0.95)
+#pdf("REF_ALT_GoF_LoF_boxplot_2.pdf")
+ggplot(sub4_for_plot, aes(y=factor(group,levels=rev(c("GoF_REF","GoF_ALT","LoF_REF","LoF_ALT","Neg",
+                                                  "Pos"))),x=as.numeric(mean_log_ratio)))+
+  geom_violin(aes(fill = group))+
+  geom_boxplot(aes(fill = group),color="white",width = 0.2) + theme_bw()+
+  geom_vline(xintercept = Ql, color="darkblue",size=0.2,linetype="dashed")+
+  geom_vline(xintercept = Qh, color="darkblue",size=0.2,linetype="dashed")
+
+#dev.off()  
+library(ggpubr)
+library(tidyverse)
+library(broom)
+library(AICcmodavg)  
+summary(sub4_for_plot)
+options(scipen = 999)
+sub4_for_plot$value <- as.numeric(sub4_for_plot$mean_log_ratio)
+one.way <- aov(value ~ group, data = sub4_for_plot)
+tukey.one.way<-TukeyHSD(one.way)
+p_values <- tukey.one.way$group[, "p adj"]
+tukey.one.way
+```
+## session Info
+```{r}
+sessionInfo()
+```
